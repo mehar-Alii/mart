@@ -8,5 +8,4 @@ dotenv.config({
 connectDB()
 .then()
 .catch(
-  console.log("moongo db connection error")
 )
