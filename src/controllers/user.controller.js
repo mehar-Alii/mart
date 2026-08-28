@@ -1,14 +1,32 @@
 import { asyncHandler } from '../utils/asynchandler.js';
 import {ApiError} from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { registerUserSchema } from '../validator/user.validator.js';
-import { User } from '../models/user.model.js'
+import { registerUserSchema , loginUserSchema } from '../validator/user.validator.js';
+import { User } from '../models/user.model.js';
 
-function generateAccessRefreshToken () {
+const generateAccessRefreshTokens = async (userId) => {
+  try{
+    const user = await User.findById(userId).select("+refreshToken");
 
+    if (!user) {
+      throw new Error("User not found while generating tokens");
+    }
+  
+    const accessToken = await user.generateAccessToken()
+    const refreshToken = await user.generateRefreshToken()
+
+    user.refreshToken = refreshToken
+    await user.save({ validateBeforeSave: false })
+
+    return { accessToken, refreshToken };
+  }
+  catch(err){
+    console.error("Token generation failed:", err);
+    throw new ApiError(500, "something went wrong while generating access and refresh token")
+  }
 }
 
-const registerUser = asyncHandler( async (res, req) => {
+const registerUser = asyncHandler( async (req, res) => {
 
   const result = registerUserSchema.safeParse(req.body);
 
@@ -51,7 +69,7 @@ const registerUser = asyncHandler( async (res, req) => {
 
 })
 
-const testRequest = asyncHandler(async (res, req) => {
+const testRequest = asyncHandler(async (req, res) => {
     console.log("========== REQUEST ==========");
 
     // 1. HTTP method
@@ -91,4 +109,53 @@ const testRequest = asyncHandler(async (res, req) => {
   )
 });
 
-export {registerUser , testRequest}
+const loginUser = asyncHandler( async (req, res) => {
+
+  const result = loginUserSchema.safeParse(req.body || {});
+
+  if (!result.success) {
+    const message = result.error.issues.map((e) => e.message).join(", ");
+    console.log("no problem here");
+    throw new ApiError(400, message);
+  }
+
+  const { email, password } = result.data;
+
+  const user = await User.findOne({ email }).select("+password");
+
+  if (!user) {
+    throw new ApiError(401, "invalid credentials");
+  }
+
+  const isPasswordValid = await user.isPasswordCorrect(password)
+
+  if(!isPasswordValid){
+    throw new ApiError(401, "invalid credientials")
+  }
+
+  const {accessToken, refreshToken} = await generateAccessRefreshTokens(user._id)
+
+  const options = {
+    httpOnly : true,
+    secure: true
+  }
+
+  return res
+  .status(200)
+  .cookie("accessToken", accessToken, options)
+  .cookie("refreshToken", refreshToken, options)
+  .json(
+    new ApiResponse(200, {
+      user: user, accessToken, refreshToken
+    },
+    "user logged in successfully"
+    )
+  )
+
+});
+
+const logoutUser = asyncHandler( (res,req) => {
+
+})
+
+export {registerUser , testRequest , loginUser}

@@ -15,4 +15,9 @@ const registerUserSchema = z.object({
         .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
 });
 
-export { registerUserSchema }
+const loginUserSchema = z.object({
+    email : z.string({ required_error: "email is required" }).email(),
+    password: z.string()
+})
+
+export { registerUserSchema , loginUserSchema}
